@@ -17,10 +17,6 @@ def initialize():
                                        help="Domain to check for SPF/DMARC issues")
     domain_argument_group.add_argument("--domains_file", type=str,
                                        help="File containing list of domains to check for SPF/DMARC issues")
-    parser.add_argument("--spf", type=bool,
-                        help="Check for SPF issues", default=True)
-    parser.add_argument("--dmarc", type=bool,
-                        help="Check for DMARC issues", default=True)
 
     args = parser.parse_args()
     main(args)
