@@ -15,7 +15,7 @@ Email spoofing is identified under the following conditions:
 
 
 # Getting Started
-Grab the latest release and install the package requirements by running `pip3 -r requirements.txt`. EmailSecCheck was developed for Python 3.
+Grab the latest release and install the package requirements by running `pip3 install -r requirements.txt`. EmailSecCheck was developed for Python 3.
 
 ## Checking DNS Records for a Single Domain
 ```
