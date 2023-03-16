@@ -91,12 +91,15 @@ def check_domain_security(domains):
             spf_results = checkdmarc.get_spf_record(domain)
 
             spf_value = spf_results["parsed"]["all"]
-            spf_weak = spf_value != 'softfail' and spf_value != 'fail'
 
-            if spf_weak:
+            if spf_value != 'fail':
                 spoofing_possible_spf = True
-                print_warning(
-                    "SPF record missing failure behavior value for '%s'" % domain)
+                if spf_value == "softfail":
+                    print_warning(
+                        "SPF record configured to 'softfail' for '%s'" % domain)
+                else:
+                    print_warning(
+                        "SPF record missing failure behavior value for '%s'" % domain)
         except checkdmarc.DNSException:
             print_error(
                 "A general DNS error has occured when performing SPF analysis")
