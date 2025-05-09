@@ -17,7 +17,8 @@ def initialize():
                                        help="Domain to check for SPF/DMARC issues")
     domain_argument_group.add_argument("--domains_file", type=str,
                                        help="File containing list of domains to check for SPF/DMARC issues")
-
+    parser.add_argument("--json", type=str,
+                                       help="Output results in JSON format")
     args = parser.parse_args()
     main(args)
 
@@ -37,7 +38,15 @@ def main(args):
     domains_list = cleanup_domains_list(domains_list)
 
     if len(domains_list) > 0:
-        check_domain_security(domains_list)
+        results = check_domain_security(domains_list)
+        
+        if args.json:
+            import json
+            output = json.dumps(results, indent=2)
+            
+            with open(args.json, 'w') as f:
+                f.write(output)
+            
     else:
         print_error("No domain(s) were provided")
 
@@ -79,10 +88,21 @@ def check_domain_security(domains):
     print_info("Analyzing %d domain(s)..." % len(domains))
 
     spoofable_domains = []
+    results = {
+        "domains": {},
+        "spoofable_domains": []
+    }
 
     for domain in domains:
         domain = domain.strip()
         print_info("Analyzing %s" % domain)
+
+        domain_result = {
+            
+            "spf_issues": [],
+            "dmarc_issues": [],
+            "spoofable": False
+        }
 
         spoofing_possible_spf = False
         spoofing_possible_dmarc = False
@@ -97,72 +117,83 @@ def check_domain_security(domains):
                 if spf_value == "softfail":
                     print_warning(
                         "SPF record configured to 'softfail' for '%s'" % domain)
+                    domain_result["spf_issues"].append("SPF record configured to 'softfail'")
                 else:
                     print_warning(
                         "SPF record missing failure behavior value for '%s'" % domain)
+                    domain_result["spf_issues"].append("SPF record missing failure behavior value")
         except checkdmarc.DNSException:
             print_error(
                 "A general DNS error has occured when performing SPF analysis")
+            domain_result["spf_issues"].append("DNS error during SPF analysis")
         except checkdmarc.SPFIncludeLoop:
             print_warning(
                 "SPF record contains an 'include' loop for '%s'" % domain)
+            domain_result["spf_issues"].append("SPF record contains an 'include' loop")
         except checkdmarc.SPFRecordNotFound:
             print_warning("SPF record is missing for '%s'" % domain)
+            domain_result["spf_issues"].append("SPF record is missing")
             spoofing_possible_spf = True
         except checkdmarc.SPFRedirectLoop:
-            print_warning(
-                "SPF record contains a 'redirect' loop for '%s'" % domain)
+            print_warning("SPF record contains a 'redirect' loop for '%s'" % domain)
+            domain_result["spf_issues"].append("SPF record contains a 'redirect' loop")
         except checkdmarc.SPFSyntaxError:
-            print_warning(
-                "SPF record contains a syntax error for '%s'" % domain)
+            print_warning("SPF record contains a syntax error for '%s'" % domain)
+            domain_result["spf_issues"].append("SPF record contains a syntax error")
             spoofing_possible_spf = True
         except checkdmarc.SPFTooManyDNSLookups:
-            print_warning(
-                "SPF record requires too many DNS lookups for '%s'" % domain)
+            print_warning("SPF record requires too many DNS lookups for '%s'" % domain)
+            domain_result["spf_issues"].append("SPF record requires too many DNS lookups")
         except checkdmarc.MultipleSPFRTXTRecords:
-            print_warning(
-                "Multiple SPF records were found for '%s'" % domain)
+            print_warning("Multiple SPF records were found for '%s'" % domain)
+            domain_result["spf_issues"].append("Multiple SPF records found")
             spoofing_possible_spf = True
+
         try:
             dmarc_data = checkdmarc.get_dmarc_record(domain)
         except checkdmarc.DNSException:
-            print_error(
-                "A general DNS error has occured when performing DMARC analysis")
+            print_error("A general DNS error has occured when performing DMARC analysis")
+            domain_result["dmarc_issues"].append("DNS error during DMARC analysis")
         except checkdmarc.DMARCRecordInWrongLocation:
-            print_warning(
-                "DMARC record is located in the wrong domain for '%s'" % domain)
+            print_warning("DMARC record is located in the wrong domain for '%s'" % domain)
+            domain_result["dmarc_issues"].append("DMARC record is in wrong location")
         except checkdmarc.DMARCRecordNotFound:
-            print_warning(
-                "DMARC record is missing for '%s'" % domain)
+            print_warning("DMARC record is missing for '%s'" % domain)
+            domain_result["dmarc_issues"].append("DMARC record is missing")
             spoofing_possible_dmarc = True
         except checkdmarc.DMARCReportEmailAddressMissingMXRecords:
-            print_warning(
-                "DMARC record's report URI contains a domain with invalid MX records for '%s'" % domain)
+            print_warning("DMARC record's report URI contains a domain with invalid MX records for '%s'" % domain)
+            domain_result["dmarc_issues"].append("DMARC report URI has invalid MX records")
         except checkdmarc.DMARCSyntaxError:
-            print_warning(
-                "DMARC record contains a syntax error for '%s'" % domain)
+            print_warning("DMARC record contains a syntax error for '%s'" % domain)
+            domain_result["dmarc_issues"].append("DMARC record contains a syntax error")
             spoofing_possible_dmarc = True
         except checkdmarc.InvalidDMARCReportURI:
-            print_warning(
-                "DMARC record references an invalid report URI for '%s'" % domain)
+            print_warning("DMARC record references an invalid report URI for '%s'" % domain)
+            domain_result["dmarc_issues"].append("DMARC record has invalid report URI")
         except checkdmarc.InvalidDMARCTag:
-            print_warning(
-                "DMARC record contains an invalid tag for '%s'" % domain)
+            print_warning("DMARC record contains an invalid tag for '%s'" % domain)
+            domain_result["dmarc_issues"].append("DMARC record contains invalid tag")
         except checkdmarc.MultipleDMARCRecords:
-            print_warning(
-                "Multiple DMARC records were found for '%s'" % domain)
+            print_warning("Multiple DMARC records were found for '%s'" % domain)
+            domain_result["dmarc_issues"].append("Multiple DMARC records found")
             spoofing_possible_dmarc = True
 
         if spoofing_possible_spf or spoofing_possible_dmarc:
             spoofable_domains.append(domain)
+            domain_result["spoofable"] = True
+            results["spoofable_domains"].append(domain)
+
+        results["domains"][domain] = domain_result
 
     if len(spoofable_domains) > 0:
-        print(Fore.CYAN, "\n\n Spoofing possible for %d domain(s): " %
-              len(spoofable_domains))
+        print(Fore.CYAN, "\n\n Spoofing possible for %d domain(s): " % len(spoofable_domains))
         for domain in spoofable_domains:
             print(Fore.CYAN, "  > %s" % domain)
     else:
         print(Fore.GREEN, "\n\n No spoofable domains were identified")
+
+    return results
 
 
 def print_error(message, fatal=True):
